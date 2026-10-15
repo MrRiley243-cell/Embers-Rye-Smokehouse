@@ -405,6 +405,9 @@ var QRCode;!function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this
   .discount-check input{ margin-top:3px; flex:none; width:16px; height:16px; accent-color:var(--gold); cursor:pointer; }
 
   /* ---------- Confirmation ---------- */
+  .chk-badge{ text-align:center; font-weight:700; letter-spacing:.06em; padding:12px; border-radius:3px; margin:14px 0; font-size:15px; }
+  .chk-badge.ok{ background:#1f6b3a; color:#fff; } .chk-badge.bad{ background:#9b1c1c; color:#fff; }
+  .confirm-overlay{ overflow-y:auto; }
   .confirm-overlay{
     position:fixed; inset:0; background:rgba(15,12,10,0.72); backdrop-filter:blur(3px);
     display:none; align-items:center; justify-content:center; z-index:100; padding:24px;
@@ -457,6 +460,7 @@ var QRCode;!function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this
     .print-active{ position:absolute; top:0; left:0; width:100%; display:flex !important; justify-content:center; }
   }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js" defer></script>
 </head>
 <body>
 
@@ -789,6 +793,7 @@ var QRCode;!function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this
     <div>Ember &amp; Rye Smokehouse — 31 Catford Hill, SE6 4NU. No parking outside (red route) — nearest car park is at Halfords, 5 minutes away.</div>
     <div>Questions? Reply to your confirmation email or message us on WhatsApp: +44 7956 184463.</div>
   </div>
+  <div class="wrap" style="text-align:right;padding-top:6px;"><a href="#staff" style="font-size:11px;opacity:.45;color:inherit">Staff</a></div>
 </footer>
 
 <div class="confirm-overlay" id="confirmOverlay">
@@ -800,6 +805,56 @@ var QRCode;!function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this
     <div class="confirm-actions" id="confirmActions"></div>
     <div class="confirm-note">Show this QR code at the collection window on Saturday. Keep a copy on your phone or print it.</div>
     <button class="btn btn-ghost btn-block confirm-close" onclick="closeConfirm()">Close</button>
+  </div>
+</div>
+
+<!-- Customer ticket (opened from the link in the WhatsApp/email message) -->
+<div class="confirm-overlay" id="ticketOverlay">
+  <div class="confirm-card">
+    <div class="confirm-id" id="tkId">ORDER —</div>
+    <h3>Your pickup ticket</h3>
+    <div class="confirm-qr" id="tkQr"></div>
+    <div class="confirm-detail" id="tkDetail"></div>
+    <div class="confirm-note">Show this QR code at the collection window on Saturday. Each code belongs to one order only.</div>
+    <button class="btn btn-ghost btn-block confirm-close" onclick="closeRouteOverlay('ticketOverlay')">Close</button>
+  </div>
+</div>
+
+<!-- Staff: scan / paste a customer QR -->
+<div class="confirm-overlay" id="staffOverlay">
+  <div class="confirm-card">
+    <div class="confirm-id">STAFF ONLY</div>
+    <h3>Collection check</h3>
+    <div id="staffGate">
+      <input id="staffPin" type="password" inputmode="numeric" placeholder="Staff PIN" style="width:100%;padding:12px;margin:12px 0;border:1px solid #cdbf9f;border-radius:3px;font-size:16px;">
+      <button class="btn btn-primary btn-block" onclick="staffLogin()">Unlock</button>
+      <div class="confirm-note" id="staffGateMsg"></div>
+    </div>
+    <div id="staffTools" style="display:none">
+      <video id="scanVideo" playsinline muted style="display:none;width:100%;border-radius:4px;margin:12px 0;background:#000"></video>
+      <button class="btn btn-primary btn-block" onclick="startScan()">Scan customer QR</button>
+      <div class="confirm-note" id="scanMsg">Or scan with your phone's normal camera app — it opens the same check screen.</div>
+      <input id="pasteLink" type="text" placeholder="Paste ticket link here" style="width:100%;padding:12px;margin:10px 0;border:1px solid #cdbf9f;border-radius:3px;font-size:15px;">
+      <button class="btn btn-ghost btn-block" onclick="handleScanned(document.getElementById('pasteLink').value)">Check pasted link</button>
+      <div class="confirm-detail" id="collectedList" style="margin-top:14px"></div>
+      <button class="btn btn-ghost btn-block" onclick="clearCollected()">Clear collected list (new Saturday)</button>
+    </div>
+    <button class="btn btn-ghost btn-block confirm-close" onclick="closeStaff()">Close</button>
+  </div>
+</div>
+
+<!-- Staff: result of checking one order -->
+<div class="confirm-overlay" id="checkOverlay">
+  <div class="confirm-card">
+    <div class="confirm-id" id="ckId">ORDER —</div>
+    <div class="chk-badge" id="ckBadge"></div>
+    <div class="confirm-detail" id="ckDetail"></div>
+    <div id="ckPinRow" style="display:none">
+      <input id="ckPin" type="password" inputmode="numeric" placeholder="Staff PIN" style="width:100%;padding:12px;margin:10px 0;border:1px solid #cdbf9f;border-radius:3px;font-size:16px;">
+    </div>
+    <button class="btn btn-primary btn-block" id="ckMark" onclick="markCollected()">Mark as collected</button>
+    <div class="confirm-note" id="ckNote">Collected status is saved on this device only. Full item details (sides, sauces) are in the WhatsApp order message.</div>
+    <button class="btn btn-ghost btn-block confirm-close" onclick="closeRouteOverlay('checkOverlay')">Close</button>
   </div>
 </div>
 
@@ -1523,13 +1578,11 @@ function confirmOrder(){
     ${notes ? '<br>Note: '+notes : ''}
   `;
 
-  // QR library mis-sizes non-ASCII text (£, en dash, accents), so keep the payload plain ASCII
-  const asciiQr = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[\u2013\u2014]/g,'-').replace(/£/g,'GBP ').replace(/[^\x20-\x7E]/g,'');
-  const qrPayload = asciiQr(`EMBER & RYE SMOKEHOUSE | Order ${orderId} | ${String(name).slice(0,30)} | Pickup Sat ${slot} | Total ${money(finalTotal())}${hasDiscount ? ' (NHS/Student 10% applied)' : ''}`);
+  const qrPayload = orderLink(lastOrder, 'c');
   const qrHolder = document.getElementById('confirmQr');
   qrHolder.innerHTML = '';
   try{
-    new QRCode(qrHolder, { text: qrPayload, correctLevel: QRCode.CorrectLevel.L, width: 190, height: 190, colorDark:'#231C17', colorLight:'#ffffff' });
+    new QRCode(qrHolder, { text: qrPayload, correctLevel: QRCode.CorrectLevel.L, width: 240, height: 240, colorDark:'#231C17', colorLight:'#ffffff' });
   }catch(e){
     try{
       qrHolder.innerHTML = '';
@@ -1555,13 +1608,14 @@ function renderConfirmActions(){
   const el = document.getElementById('confirmActions');
   const discountLine = lastOrder.discounted ? '\nNHS/Student discount applied (10% — ID required at collection)' : '';
   const summaryText = `New order — Ember & Rye Smokehouse\nOrder ${lastOrder.orderId}\nName: ${lastOrder.name}\nPhone: ${lastOrder.phone}\nPickup: Saturday ${lastOrder.slot}\n${lastOrder.itemLines.join('\n')}${discountLine}\nTotal: ${money(lastOrder.total)}${lastOrder.notes ? '\nNote: '+lastOrder.notes : ''}`;
-  const wa = `https://wa.me/${SHOP_WHATSAPP}?text=${encodeURIComponent(summaryText)}`;
+  const ticketLink = orderLink(lastOrder,'o');
+  const wa = `https://wa.me/${SHOP_WHATSAPP}?text=${encodeURIComponent(summaryText + '\n\nPickup ticket (QR): ' + ticketLink)}`;
 
   let html = `<button class="btn btn-primary btn-block" onclick="openSumUp()">Pay by Card (SumUp) — ${money(lastOrder.total)}</button>`;
   html += `<a class="btn btn-gold btn-block" href="${wa}" target="_blank" rel="noopener">Send order to us on WhatsApp</a>`;
 
   if(lastOrder.email){
-    const copyText = `Your Ember & Rye Smokehouse order ${lastOrder.orderId}\nPickup: Saturday ${lastOrder.slot}\n${lastOrder.itemLines.join('\n')}${discountLine}\nTotal due at pickup: ${money(lastOrder.total)}`;
+    const copyText = `Your Ember & Rye Smokehouse order ${lastOrder.orderId}\nPickup: Saturday ${lastOrder.slot}\n${lastOrder.itemLines.join('\n')}${discountLine}\nTotal due at pickup: ${money(lastOrder.total)}\n\nYour pickup ticket (QR code): ${ticketLink}`;
     const mailto = `mailto:${encodeURIComponent(lastOrder.email)}?subject=${encodeURIComponent('Your Ember & Rye Smokehouse order '+lastOrder.orderId)}&body=${encodeURIComponent(copyText)}`;
     html += `<a class="btn btn-ghost btn-block" href="${mailto}">Email me a copy</a>`;
   }
@@ -1727,6 +1781,163 @@ renderHeroDate();
 renderSiteQr();
 renderStickerQr();
 renderMenuQrs();
+
+/* ================= Per-order ticket links, QR and staff collection check ================= */
+const SITE_BASE = 'https://mrriley243-cell.github.io/Speakeasy-smokeFinal1/';
+const STAFF_PIN = '2468';   // change this to your own PIN
+
+function b64uEnc(obj){
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let s=''; bytes.forEach(b=>{ s+=String.fromCharCode(b); });
+  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function b64uDec(str){
+  str = str.replace(/-/g,'+').replace(/_/g,'/');
+  while(str.length % 4) str += '=';
+  const bin = atob(str);
+  return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c=>c.charCodeAt(0))));
+}
+function orderPayload(o, compact){
+  return {
+    i:o.orderId, n:String(o.name).slice(0,30), s:o.slot, t:o.total, d:o.discounted?1:0,
+    l:o.itemLines.slice(0,12).map(l=> compact ? l.split(' — ')[0].slice(0,32) : l.slice(0,110))
+  };
+}
+function orderLink(o, mode){ return SITE_BASE + '#' + mode + '=' + b64uEnc(orderPayload(o, mode==='c')); }
+function payloadToOrder(p){ return { orderId:p.i, name:p.n, slot:p.s, total:p.t, discounted:!!p.d, itemLines:p.l||[] }; }
+function esc(t){ return String(t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function drawQr(holder, text, size){
+  holder.innerHTML = '';
+  try{
+    new QRCode(holder, { text, correctLevel: QRCode.CorrectLevel.L, width:size, height:size, colorDark:'#231C17', colorLight:'#ffffff' });
+  }catch(e){
+    holder.innerHTML = '';
+    try{ new QRCode(holder, { text:'ER ORDER ' + (text.match(/ER-[0-9A-Z-]+/)||[''])[0], correctLevel: QRCode.CorrectLevel.L, width:size, height:size }); }catch(e2){}
+  }
+}
+
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+function getCollected(){ try{ return JSON.parse(lsGet('erCollected')||'{}'); }catch(e){ return {}; } }
+
+function clearHash(){ try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){} }
+function closeRouteOverlay(id){ document.getElementById(id).classList.remove('open'); clearHash(); }
+
+function showTicket(p){
+  const o = payloadToOrder(p);
+  document.getElementById('tkId').textContent = 'ORDER ' + o.orderId;
+  drawQr(document.getElementById('tkQr'), orderLink(o,'c'), 240);
+  document.getElementById('tkDetail').innerHTML =
+    '<strong>'+esc(o.name)+'</strong><br>Pickup: <strong>Saturday, '+esc(o.slot)+'</strong><br>'+
+    o.itemLines.map(l=>'• '+esc(l)).join('<br>')+'<br>'+
+    (o.discounted?'NHS/Student discount applied (10% — bring ID)<br>':'')+
+    'Total due at pickup: <strong>'+money(o.total)+'</strong>';
+  document.getElementById('ticketOverlay').classList.add('open');
+}
+
+let currentCheck = null;
+function showCheck(p){
+  const o = payloadToOrder(p); currentCheck = o;
+  const done = getCollected()[o.orderId];
+  document.getElementById('ckId').textContent = 'ORDER ' + o.orderId;
+  const badge = document.getElementById('ckBadge');
+  if(done){
+    badge.className='chk-badge bad'; badge.textContent='ALREADY COLLECTED · ' + new Date(done.t).toLocaleString('en-GB',{weekday:'short',hour:'2-digit',minute:'2-digit'});
+  } else {
+    badge.className='chk-badge ok'; badge.textContent='VALID · NOT YET COLLECTED';
+  }
+  document.getElementById('ckDetail').innerHTML =
+    '<strong>'+esc(o.name)+'</strong><br>Pickup slot: <strong>'+esc(o.slot)+'</strong><br>'+
+    o.itemLines.map(l=>'• '+esc(l)).join('<br>')+'<br>'+
+    (o.discounted?'<strong>NHS/Student 10% — check ID</strong><br>':'')+
+    'Total due: <strong>'+money(o.total)+'</strong>';
+  document.getElementById('ckMark').style.display = done ? 'none' : 'block';
+  document.getElementById('ckPinRow').style.display = 'none';
+  document.getElementById('ckPin').value = '';
+  document.getElementById('checkOverlay').classList.add('open');
+}
+function markCollected(){
+  if(!currentCheck) return;
+  if(lsGet('erStaffOk') !== '1'){
+    const row = document.getElementById('ckPinRow'), pin = document.getElementById('ckPin');
+    if(row.style.display === 'none'){ row.style.display='block'; pin.focus(); return; }
+    if(pin.value !== STAFF_PIN){ document.getElementById('ckNote').textContent = 'Wrong PIN.'; return; }
+    lsSet('erStaffOk','1');
+  }
+  const c = getCollected();
+  c[currentCheck.orderId] = { t:new Date().toISOString(), n:currentCheck.name, v:currentCheck.total };
+  lsSet('erCollected', JSON.stringify(c));
+  showCheck({ i:currentCheck.orderId, n:currentCheck.name, s:currentCheck.slot, t:currentCheck.total, d:currentCheck.discounted?1:0, l:currentCheck.itemLines });
+  renderCollectedList();
+}
+
+function staffUnlocked(){ return lsGet('erStaffOk') === '1'; }
+function openStaff(){
+  document.getElementById('staffOverlay').classList.add('open');
+  document.getElementById('staffGate').style.display = staffUnlocked() ? 'none' : 'block';
+  document.getElementById('staffTools').style.display = staffUnlocked() ? 'block' : 'none';
+  renderCollectedList();
+}
+function staffLogin(){
+  if(document.getElementById('staffPin').value === STAFF_PIN){ lsSet('erStaffOk','1'); openStaff(); }
+  else document.getElementById('staffGateMsg').textContent = 'Wrong PIN.';
+}
+function closeStaff(){ stopScan(); closeRouteOverlay('staffOverlay'); }
+function renderCollectedList(){
+  const c = getCollected(), ids = Object.keys(c);
+  const el = document.getElementById('collectedList'); if(!el) return;
+  el.innerHTML = ids.length
+    ? '<strong>Collected on this device: '+ids.length+'</strong><br>'+ids.map(id=>esc(id)+' — '+esc(c[id].n)).join('<br>')
+    : 'No orders marked collected yet.';
+}
+function clearCollected(){ lsSet('erCollected','{}'); renderCollectedList(); }
+
+let scanStream = null, scanTimer = null;
+function stopScan(){
+  if(scanTimer){ clearInterval(scanTimer); scanTimer=null; }
+  if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
+  const v = document.getElementById('scanVideo'); if(v) v.style.display='none';
+}
+async function startScan(){
+  const msg = document.getElementById('scanMsg'), v = document.getElementById('scanVideo');
+  try{
+    scanStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
+  }catch(e){ msg.textContent = 'Camera not available here — use your phone camera app, or paste the ticket link below.'; return; }
+  v.srcObject = scanStream; await v.play(); v.style.display='block';
+  msg.textContent = 'Point the camera at the customer’s QR code…';
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently:true });
+  const detector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats:['qr_code'] }) : null;
+  scanTimer = setInterval(async ()=>{
+    if(v.readyState < 2) return;
+    let text = null;
+    if(detector){ try{ const r = await detector.detect(v); if(r[0]) text = r[0].rawValue; }catch(e){} }
+    else if(window.jsQR){
+      canvas.width = v.videoWidth; canvas.height = v.videoHeight; ctx.drawImage(v,0,0);
+      const d = ctx.getImageData(0,0,canvas.width,canvas.height), c = jsQR(d.data,d.width,d.height);
+      if(c) text = c.data;
+    }
+    if(text) handleScanned(text);
+  }, 300);
+}
+function handleScanned(text){
+  const m = String(text).match(/#([oc])=([A-Za-z0-9_-]+)/);
+  const msg = document.getElementById('scanMsg');
+  if(!m){ if(msg) msg.textContent = 'That is not an Ember & Rye order QR code.'; return; }
+  try{ stopScan(); showCheck(b64uDec(m[2])); }
+  catch(e){ if(msg) msg.textContent = 'Could not read that order code.'; }
+}
+
+function routeHash(){
+  const h = location.hash || '';
+  const m = h.match(/^#([oc])=([A-Za-z0-9_-]+)$/);
+  try{
+    if(m){ const p = b64uDec(m[2]); (m[1]==='o' ? showTicket : showCheck)(p); }
+    else if(h === '#staff'){ openStaff(); }
+  }catch(e){}
+}
+window.addEventListener('hashchange', routeHash);
+routeHash();
 </script>
 </body>
 </html>
