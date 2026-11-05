@@ -722,6 +722,7 @@ var QRCode;!function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this
           <div class="form-msg" id="formMsg"></div>
           <button class="btn btn-gold btn-block" style="margin-top:12px;" onclick="openSumUp()">Pay by Card (SumUp)</button>
           <div class="slot-note" id="sumupNote" style="text-align:center; margin-top:6px;">Enter £0.00 on the next screen</div>
+          <div class="slot-note" style="text-align:center; margin-top:6px;">Please send your WhatsApp confirmation before paying.</div>
         </div>
       </div>
     </div>
@@ -886,6 +887,7 @@ const SIDES = [
   {id:'corn', name:'Corn on the Cob', unit:'BBQ butter', price:2.00},
   {id:'mash', name:'Creamy Mash Potato', unit:'herbs & garlic', price:4.00},
   {id:'slaw', name:'Coleslaw', unit:'', price:2.50},
+  {id:'pink_slaw', name:'Pickled Pink Slaw', unit:'tangy pickled red cabbage slaw', price:2.50},
   {id:'beans', name:'BBQ Baked Beans', unit:'', price:3.00},
   {id:'cornbread', name:'Cornbread', unit:'2 slices', price:3.50},
   {id:'fries', name:'Seasoned Fries', unit:'house spice blend, cooked in beef tallow', price:4.50},
@@ -1611,8 +1613,9 @@ function renderConfirmActions(){
   const ticketLink = orderLink(lastOrder,'o');
   const wa = `https://wa.me/${SHOP_WHATSAPP}?text=${encodeURIComponent(summaryText + '\n\nPickup ticket (QR): ' + ticketLink)}`;
 
-  let html = `<button class="btn btn-primary btn-block" onclick="openSumUp()">Pay by Card (SumUp) — ${money(lastOrder.total)}</button>`;
-  html += `<a class="btn btn-gold btn-block" href="${wa}" target="_blank" rel="noopener">Send order to us on WhatsApp</a>`;
+  let html = `<div class="confirm-note" style="text-align:left; border:1px solid var(--gold, #C9A227); padding:10px 12px; margin-bottom:10px;"><strong>Before you pay:</strong><br>1. Tap “Send order to us on WhatsApp” and press send, so we have your order.<br>2. Then pay by card with SumUp (enter ${money(lastOrder.total)}), or pay at pickup.</div>`;
+  html += `<a class="btn btn-primary btn-block" href="${wa}" target="_blank" rel="noopener">1. Send order to us on WhatsApp</a>`;
+  html += `<button class="btn btn-gold btn-block" onclick="openSumUp()">2. Pay by Card (SumUp) — ${money(lastOrder.total)}</button>`;
 
   if(lastOrder.email){
     const copyText = `Your Ember’s & Rye Smokehouse order ${lastOrder.orderId}\nPickup: Saturday ${lastOrder.slot}\n${lastOrder.itemLines.join('\n')}${discountLine}\nTotal due at pickup: ${money(lastOrder.total)}\n\nYour pickup ticket (QR code): ${ticketLink}`;
