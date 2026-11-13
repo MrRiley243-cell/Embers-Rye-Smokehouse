@@ -1764,14 +1764,20 @@ function roundRect(ctx, x, y, w, h, r){
 
 /* ---------------- Upcoming Saturday label ---------------- */
 function renderHeroDate(){
-  const d = new Date();
-  const day = d.getDay();
-  const diff = (6 - day + 7) % 7;
-  const nextSat = new Date(d);
-  nextSat.setDate(d.getDate() + (diff===0 ? 0 : diff));
+  // Orders close Thursday 12:00 (UK time). After that, show the following Saturday.
+  const now = new Date();
+  const d = new Date(now.toLocaleString('en-US', {timeZone:'Europe/London'}));
+  const diff = (6 - d.getDay() + 7) % 7;
+  const sat = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diff);
+  const cutoff = new Date(sat.getFullYear(), sat.getMonth(), sat.getDate() - 2, 12, 0, 0);
+  const closed = d >= cutoff;
+  if(closed) sat.setDate(sat.getDate() + 7);
   const opts = { weekday:'long', month:'long', day:'numeric' };
-  document.getElementById('heroDate').textContent = nextSat.toLocaleDateString('en-GB', opts);
+  document.getElementById('heroDate').textContent = sat.toLocaleDateString('en-GB', opts);
+  const tag = document.getElementById('heroDate').previousElementSibling;
+  if(tag) tag.textContent = closed ? 'NEXT SATURDAY' : 'THIS SATURDAY';
 }
+setInterval(renderHeroDate, 60000);
 
 /* ---------------- Init ---------------- */
 renderMenuLists();
